@@ -14,6 +14,6 @@ Helper functions for computing transcriptional dyscoordination measures.
 
 Scripts for the two allelic-specific expression (ASE) analyses:
 
-- `ASE_ochiai.R` — ASE analysis on the dataset by [Ochiai et al. 2020](https://pmc.ncbi.nlm.nih.gov/articles/PMC7299619)
-- `ASE_larsson.R` — ASE analysis on the dataset by [Larsson et al. 2021](https://pmc.ncbi.nlm.nih.gov/articles/PMC7610481)
+- `ASE_ochiai.R` — ASE analysis on the dataset by [Ochiai et al. (2020)](https://pmc.ncbi.nlm.nih.gov/articles/PMC7299619)
+- `ASE_larsson.R` — ASE analysis on the dataset by [Larsson et al. (2021)](https://pmc.ncbi.nlm.nih.gov/articles/PMC7610481)
 
