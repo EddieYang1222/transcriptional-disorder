@@ -70,6 +70,7 @@ ABallele.saver.var.models <- get_var_model(as.matrix(ABallele), ABallele.saver.m
 # save(ABallele.saver.var.models, file = "ABallele_variance_models_SAVER.RData")
 
 ######################################################
+# Gene-level deviation
 all_temp_gene_level <- data.frame()
 
 # Initialize variables
@@ -109,18 +110,17 @@ for (g in 1:nrow(estimate)) {
       delta[c] <- NA
     }
   }
-  
   # Average delta across all cells to get gene-level deviation
   Var_avg <- append(Var_avg, mean(nu, na.rm = TRUE))
   Gene_level_deviation <- append(Gene_level_deviation, mean(delta, na.rm = TRUE))
 }
-
 # Combine data from all cell types
 temp <- data.frame(Gene, Dispersion_cCV, Dispersion_cFF, Dispersion_cVar, Var_model, Dispersion, Var_avg, Gene_level_deviation)
 all_temp_gene_level <- rbind(all_temp_gene_level, temp)
 all_temp_gene_level$Gene_level_deviation <- remove_outliers(all_temp_gene_level$Gene_level_deviation)
 
 ######################################################
+# Cell-level deviation
 all_temp_cell_level <- data.frame()
 
 # Initialize variables
@@ -155,12 +155,10 @@ for (c in 1:ncol(estimate)) {
       delta[g] <- NA
     }
   }
-  
   # Average delta across all cells to get gene-level deviation
   Var_avg <- append(Var_avg, mean(nu, na.rm=TRUE))
   Cell_level_deviation <- append(Cell_level_deviation, mean(delta, na.rm = TRUE))
 }
-
 # Combine data from all cell types
 temp <- data.frame(Cell_barcode, Cell_level_deviation)
 all_temp_cell_level <- rbind(all_temp_cell_level, temp)
@@ -225,7 +223,6 @@ Aallele.disp.final <- (1/ncol(Aallele.disp))*(rowSums(Aallele.disp))
 Aallele.disp.final.var <- Aallele.disp.final
 
 ######################################################
-
 # Gene-level deviation vs. allelic discordance
 all_temp_gene_level$allelic_discordance <- allelic_discordance
 
