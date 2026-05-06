@@ -1,81 +1,52 @@
-# Transcriptional dyscoordination analysis for TMS bone marrow
-# This analysis can be directly applied to all other TMS tissues (lung, limb muscle, adipose tissue)
-
-# Online links
-# https://www.nature.com/articles/s41586-020-2496-1
-# https://figshare.com/articles/dataset/Processed_files_to_use_with_scanpy_/8273102/2
-
-# Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/TMS_marrow")
+# Transcriptional dyscoordination analysis for aging rat kidney (PT cells only)
 
 library(Seurat)
 library(dplyr)
-library(ggplot2)
 library(Matrix)
 library(pbapply)
 library(SAVER)
-library(anndata)
 
 # Load helper functions
 source('Transcriptional_dyscoordination_functions.R')
 
 ######################################################
-# Load TMS droplet data
-data <- read_h5ad("tabula-muris-senis-droplet-official-raw-obj.h5ad")
-
-# Subset for the target tissue
-# Replace 'Marrow' with 'Lung', 'Limb_Muscle', or 'Fat'
-data.subset <- data[data$obs['tissue'] == 'Marrow']
-dataset.counts <- t(as.matrix(data.subset$X))
-dataset.age <- as.numeric(data.subset$obs$age)
-dataset.age.levels <- levels(data.subset$obs$age)
-dataset.celltype <- as.numeric(data.subset$obs$cell_ontology_class)
-dataset.celltype.levels <- levels(data.subset$obs$cell_ontology_class)
-
-# Save and load input data
-save(dataset.counts, dataset.age, dataset.age.levels, 
-     dataset.celltype, dataset.celltype.levels, file = "TMS_marrow.RData")
-load('TMS_marrow.RData')
+# Load and prepare data
+load("Parker_kidney_aging_PT_only.RData")
 
 # Remove genes with zero counts
 message("The initial matrix size is ", nrow(dataset.counts), " genes and ", ncol(dataset.counts), " cells.")
-dataset.counts <- dataset.counts[rowSums(dataset.counts) != 0, ] 
-message("After removing genes with zero counts, the new matrix size is ", 
+dataset.counts <- dataset.counts[rowSums(dataset.counts) != 0, ]
+message("After removing genes with zero counts, the new matrix size is ",
         nrow(dataset.counts), " genes and ", ncol(dataset.counts), " cells.")
 
 # Run SAVER for manifold fitting
 # This step is typically computationally heavy and takes at least several hours for >= 10,000 cells
 # We recommend running with at least 64 GB of RAM and saving the manifold separately
-dataset.saver <- saver(dataset.counts, ncores = 2)
+dataset.saver <- saver(dataset.counts, ncores = 4)
 
 # Load and save pre-computed manifold
-# save(dataset.saver, file="TMS_marrow_manifold.RData")
-# load('TMS_marrow_manifold.RData')
+# save(dataset.saver, file = "aging_rat_kidney_PT_cell_manifold.RData")
+# load("aging_rat_kidney_PT_cell_manifold.RData")
 
 ######################################################
-# Additional pre-processing
-dataset.celltype.levels.files <- gsub(" ", "_", dataset.celltype.levels)
-dataset.age.levels <- replace(dataset.age.levels, dataset.age.levels == "1m", "01m")
-dataset.age.levels <- replace(dataset.age.levels, dataset.age.levels == "3m", "03m")
-size.factor <- colSums(dataset.counts) / mean(colSums(dataset.counts))
-
 # Find dispersion model with highest likelihood for each gene
+size.factor <- colSums(dataset.counts) / mean(colSums(dataset.counts))
 dataset.saver.mu <- dataset.saver$mu.out
 dataset.saver.var.models <- get_var_model(dataset.counts, dataset.saver.mu, size.factor)
-# save(dataset.saver.var.models, file="TMS_marrow_variance_models_SAVER.RData")
-# load("TMS_marrow_variance_models_SAVER.RData")
+# save(dataset.saver.var.models, file = "aging_rat_kidney_PT_cell_variance_models_SAVER.RData")
+# load("aging_rat_kidney_PT_cell_variance_models_SAVER.RData")
 
 ######################################################
 # Compute gene-level and cell-level deviation
 all_temp_gene_level <- data.frame()
 all_temp_cell_level <- data.frame()
 
-for(i in min(dataset.celltype):max(dataset.celltype)) {
+for (i in min(dataset.celltype):max(dataset.celltype)) {
   for (j in min(dataset.age):max(dataset.age)) {
     index <- rep(0, ncol(dataset.counts))
     for (k in 1:ncol(dataset.counts)) {
       # Create an index for each subset in the older ages
-      index[k] <- dataset.celltype[k] == i && dataset.age[k] == j 
+      index[k] <- dataset.celltype[k] == i && dataset.age[k] == j
     }
     if (sum(index) > 9) { # Only analyze strata with >= 10 cells
       # Subset counts and normalize to match original manifold fitting
@@ -99,9 +70,9 @@ for(i in min(dataset.celltype):max(dataset.celltype)) {
       assign(paste0("data.disp.k",j), vector())
     }
   }
-  
+
   # Gene-level deviation
-  if (max(dataset.age)>1) {
+  if (max(dataset.age) > 1) {
     for (j in min(dataset.age):max(dataset.age)) {
       if (get(paste0("data.size",j)) != 0) {
         # Initialize variables
@@ -117,7 +88,7 @@ for(i in min(dataset.celltype):max(dataset.celltype)) {
         # Calculate gene-level deviation
         estimate <- get(paste0("estimate", j))
         mu.out <- get(paste0("mu.out", j))
-        
+
         for (g in 1:nrow(estimate)) {
           delta <- numeric(ncol(estimate))
           nu <- numeric(ncol(estimate))
@@ -144,8 +115,8 @@ for(i in min(dataset.celltype):max(dataset.celltype)) {
         all_temp_gene_level <- rbind(all_temp_gene_level, temp)
       }
     }
-  
-    # Cell-level dispersion
+
+    # Cell-level deviation
     for (j in min(dataset.age):max(dataset.age)) {
       if (get(paste0("data.size",j)) != 0) {
         # Initialize variables
@@ -156,25 +127,25 @@ for(i in min(dataset.celltype):max(dataset.celltype)) {
         # Calculate cell-level deviation
         estimate <- get(paste0("estimate", j))
         mu.out <- get(paste0("mu.out", j))
-        
+
         for (c in 1:ncol(estimate)) {
           delta <- numeric(nrow(estimate))
           nu <- numeric(nrow(estimate))
           for (g in 1:nrow(estimate)) {
-              model <- names(dataset.saver.var.models)[g]
-              if (model == "cCV") {  # cCV model
-                nu_g <- mu.out[g, c]^2 / dataset.saver.var.models[g]
-              } else if (model == "cFF") {  # cFF model
-                nu_g <- mu.out[g, c] / dataset.saver.var.models[g]
-              } else {  # cVar model
-                nu_g <- dataset.saver.var.models[g]
-              }
-              # Compute delta for gene g and cell c
-              nu[g] <- nu_g
-              delta[g] <- (estimate[g, c] - mu.out[g, c])^2 / nu_g
+            model <- names(dataset.saver.var.models)[g]
+            if (model == "cCV") {  # cCV model
+              nu_g <- mu.out[g, c]^2 / dataset.saver.var.models[g]
+            } else if (model == "cFF") {  # cFF model
+              nu_g <- mu.out[g, c] / dataset.saver.var.models[g]
+            } else {  # cVar model
+              nu_g <- dataset.saver.var.models[g]
             }
+            # Compute delta for gene g and cell c
+            nu[g] <- nu_g
+            delta[g] <- (estimate[g, c] - mu.out[g, c])^2 / nu_g
+          }
           # Average delta across all cells to get gene-level deviation
-          Var_avg <- append(Var_avg, mean(nu, na.rm=TRUE))
+          Var_avg <- append(Var_avg, mean(nu, na.rm = TRUE))
           Cell_level_deviation <- append(Cell_level_deviation, mean(delta, na.rm = TRUE))
         }
         # Combine data from all cell types
@@ -186,7 +157,7 @@ for(i in min(dataset.celltype):max(dataset.celltype)) {
   }
 }
 
-write.csv(all_temp_gene_level, "TMS_marrow_estimated_dispersion_SAVER.csv", row.names = FALSE)
-write.csv(all_temp_cell_level, "TMS_marrow_cellular_dispersion_SAVER.csv", row.names = FALSE)
+write.csv(all_temp_gene_level, "aging_rat_kidney_PT_cell_estimated_dispersion_SAVER.csv", row.names = FALSE)
+write.csv(all_temp_cell_level, "aging_rat_kidney_PT_cell_cellular_dispersion_SAVER.csv",  row.names = FALSE)
 
 ######################################################
