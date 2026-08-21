@@ -72,6 +72,23 @@ cov_list <- c(nCount_RNA = "Sequencing depth",
 # Load in data
 load('./liver_data_integrated.RData')
 
+# Cell-count table — Celltype rows × age columns, values = n_cells, with margins
+cell_counts <- liver_data_integrated@meta.data %>%
+  as.data.frame() %>%
+  filter(doublet == "Singlet") %>%
+  count(annotation, age) %>%
+  rename(Celltype = annotation, Age = age) %>%
+  mutate(Age = factor(Age, levels = age_levels)) %>%
+  tidyr::pivot_wider(names_from = Age, values_from = n, values_fill = 0) %>%
+  arrange(Celltype)
+cell_counts <- cell_counts %>% mutate(Total = rowSums(dplyr::select(., -Celltype)))
+cell_counts <- dplyr::bind_rows(
+  cell_counts,
+  cell_counts %>% summarise(Celltype = "Total", dplyr::across(-Celltype, sum)))
+write.csv(cell_counts, "aging_mouse_liver_cell_counts.csv", row.names = FALSE)
+cat("Cell counts (Celltype x Age) with margins:\n")
+print(cell_counts)
+
 liver_hepatocyte <- subset(liver_data_integrated,
                             subset = doublet == "Singlet" & annotation == "Hepatocyte")
 rm(liver_data_integrated)
