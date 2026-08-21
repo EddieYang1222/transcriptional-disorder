@@ -48,7 +48,7 @@ Transcriptional dyscoordination under controlled perturbations of cellular integ
 
 Lineage-resolved dyscoordination in four human T cell datasets with paired TCR clonotypes.
 
-- `glioma_T_cell_deviation.R`, `glioma_T_cell_analysis.R` — glioma-infiltrating CD8 T cells ([Yang et al. 2025](https://www.biorxiv.org/content/10.1101/2025.09.06.674490))
+- `glioma_T_cell_deviation.R`, `glioma_T_cell_analysis.R` — glioma-infiltrating CD8 T cells ([Yang et al. 2025](https://www.biorxiv.org/content/10.1101/2025.09.06.674490v1))
 - `melanoma_T_cell_deviation.R` — ICB-treated melanoma CD8 T cells, per timepoint ([Wang et al. 2024](https://pubmed.ncbi.nlm.nih.gov/39214097/))
 - `Terekhova_T_cell_deviation.R` — healthy-aging blood T cells ([Terekhova et al. 2023](https://pubmed.ncbi.nlm.nih.gov/37963457/))
 - `Wang_aging_T_cell_deviation.R` — healthy-aging PBMC T cells ([Wang et al. 2025](https://pubmed.ncbi.nlm.nih.gov/39881000/))

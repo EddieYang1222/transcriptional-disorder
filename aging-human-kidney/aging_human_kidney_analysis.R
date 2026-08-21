@@ -142,22 +142,6 @@ s_genes <- intersect(cc.genes.updated.2019$s.genes, rownames(obj))
 g2m_genes <- intersect(cc.genes.updated.2019$g2m.genes, rownames(obj))
 obj <- CellCycleScoring(obj, s.features = s_genes, g2m.features = g2m_genes, set.ident = FALSE)
 
-# Cell-count table — Celltype rows × age_bin columns, values = n_cells, with margins
-cell_counts <- obj@meta.data %>%
-  as.data.frame() %>%
-  count(celltype, age_bin) %>%
-  rename(Celltype = celltype, Age = age_bin) %>%
-  mutate(Age = factor(Age, levels = age_levels)) %>%
-  tidyr::pivot_wider(names_from = Age, values_from = n, values_fill = 0) %>%
-  arrange(Celltype)
-cell_counts <- cell_counts %>% mutate(Total = rowSums(dplyr::select(., -Celltype)))
-cell_counts <- dplyr::bind_rows(
-  cell_counts,
-  cell_counts %>% summarise(Celltype = "Total", dplyr::across(-Celltype, sum)))
-write.csv(cell_counts, "aging_human_kidney_cell_counts.csv", row.names = FALSE)
-cat("Cell counts (Celltype x Age) with margins:\n")
-print(cell_counts)
-
 kidney_metadata <- data.frame(Cell_barcode = colnames(obj),
                               Sample = obj@meta.data$sample,  # biological replicate (donor/library)
                               nCount_RNA = obj$nCount_RNA,
