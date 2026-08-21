@@ -6,7 +6,7 @@
 # https://figshare.com/articles/dataset/Processed_files_to_use_with_scanpy_/8273102/2
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/TMS_marrow")
+# setwd("path/to/working/directory")
 
 library(Seurat)
 library(dplyr)
@@ -20,6 +20,9 @@ library(stringr)
 
 # Load helper functions
 source('Transcriptional_dyscoordination_functions.R')
+
+# Depth covariates default to loess (almost always non-linear at single-cell scale).
+loess_covs <- c("nCount_RNA", "nFeature_RNA")
 
 ######################################################
 # 1. Transcriptional dyscoordination analysis
@@ -68,40 +71,44 @@ signif_comparisons <- lapply(seq_along(old_ages[-length(old_ages)]),
                              function(i) c(old_ages[i], old_ages[i + 1]))
 
 p_gene_level_dyscoordination <- lfc_data %>%
-  filter(LFC >= quantile(LFC, 0.01, na.rm = TRUE),
-         LFC <= quantile(LFC, 0.99, na.rm = TRUE)) %>%
-  ggplot(aes(x = Age, y = LFC, fill = Age)) + 
+  group_by(Cell_type) %>%
+  filter(LFC >= quantile(LFC, 0.025, na.rm = TRUE),
+         LFC <= quantile(LFC, 0.975, na.rm = TRUE)) %>%
+  ungroup() %>%
+  ggplot(aes(x = Age, y = LFC, fill = Age)) +
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
-  scale_fill_brewer(palette = "Blues") + 
-  facet_wrap(~ Cell_type, ncol = 3) + 
-  theme_minimal() + 
+  scale_fill_brewer(palette = "Blues") +
+  facet_wrap(~ Cell_type, ncol = 3) +
+  theme_minimal() +
   labs(x = "Age", y = "Log-fold change of gene-level dyscoordination") +
-  geom_signif(comparisons = signif_comparisons, map_signif_level = TRUE, 
+  geom_signif(comparisons = signif_comparisons, map_signif_level = TRUE,
               test = function(x, y) wilcox.test(x, y, alternative = "less"), step_increase = 0.1) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red")
 
-ggsave("TMS_marrow_gene_level_dyscoordination.png", p_gene_level_dyscoordination, width = 8, height = 10)
+ggsave("TMS_marrow_gene_level_dyscoordination.png", p_gene_level_dyscoordination, width = 9.5, height = 11)
 
 signif_comparisons <- lapply(seq_along(age_levels[-length(age_levels)]),
                              function(i) c(age_levels[i], age_levels[i + 1]))
 
 p_cell_level_dyscoordination <- cell_level_dyscoordination_cleaned %>%
-  filter(Cell_level_deviation >= quantile(Cell_level_deviation, 0.01, na.rm = TRUE),
-         Cell_level_deviation <= quantile(Cell_level_deviation, 0.99, na.rm = TRUE)) %>%
+  group_by(cell_type) %>%
+  filter(Cell_level_deviation >= quantile(Cell_level_deviation, 0.025, na.rm = TRUE),
+         Cell_level_deviation <= quantile(Cell_level_deviation, 0.975, na.rm = TRUE)) %>%
+  ungroup() %>%
   ggplot(aes(x = Age, y = log(Cell_level_deviation), fill = Age)) +
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
-  scale_fill_brewer(palette = "Reds") + 
-  facet_wrap(~ cell_type, ncol = 3) + 
-  theme_minimal() + 
+  scale_fill_brewer(palette = "Reds") +
+  facet_wrap(~ cell_type, ncol = 3) +
+  theme_minimal() +
   labs(x = "Age", y = "Cell-level dyscoordination (log-transformed)") +
-  geom_signif(comparisons = signif_comparisons, map_signif_level = TRUE, 
+  geom_signif(comparisons = signif_comparisons, map_signif_level = TRUE,
               test = function(x, y) wilcox.test(x, y, alternative = "less"), step_increase = 0.1) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
 
-ggsave("TMS_marrow_cell_level_dyscoordination.png", p_cell_level_dyscoordination, width = 8, height = 10)
+ggsave("TMS_marrow_cell_level_dyscoordination.png", p_cell_level_dyscoordination, width = 9.5, height = 11)
 
 ######################################################
 # 2. Technical covariate analysis
@@ -140,7 +147,31 @@ TMS_marrow[["percent.ribo"]] <- PercentageFeatureSet(TMS_marrow, pattern = "^Rp[
 s_genes <- intersect(str_to_title(cc.genes.updated.2019$s.genes), rownames(TMS_marrow))
 g2m_genes <- intersect(str_to_title(cc.genes.updated.2019$g2m.genes), rownames(TMS_marrow))
 TMS_marrow <- CellCycleScoring(TMS_marrow, s.features = s_genes, g2m.features = g2m_genes, set.ident = FALSE)
-  
+
+# UMAP of cell types included in downstream analyses
+p_umap <- DimPlot(TMS_marrow, reduction = "umap", group.by = "celltype",
+                  label = TRUE, repel = TRUE, label.size = 4) +
+  theme_minimal() +
+  labs(title = "TMS marrow cell types (UMAP)")
+ggsave("TMS_marrow_UMAP_celltype.png", p_umap, width = 8, height = 8)
+
+# Cell-count table — Celltype rows × Age columns, values = n_cells, with margins
+cell_counts <- TMS_marrow@meta.data %>%
+  as.data.frame() %>%
+  filter(age %in% age_levels) %>%
+  count(celltype, age) %>%
+  rename(Celltype = celltype, Age = age) %>%
+  mutate(Age = factor(Age, levels = age_levels)) %>%
+  tidyr::pivot_wider(names_from = Age, values_from = n, values_fill = 0) %>%
+  arrange(Celltype)
+cell_counts <- cell_counts %>% mutate(Total = rowSums(dplyr::select(., -Celltype)))
+cell_counts <- dplyr::bind_rows(
+  cell_counts,
+  cell_counts %>% summarise(Celltype = "Total", dplyr::across(-Celltype, sum)))
+write.csv(cell_counts, "TMS_marrow_cell_counts.csv", row.names = FALSE)
+cat("Cell counts (Celltype x Age) with margins:\n")
+print(cell_counts)
+
 TMS_marrow_metadata <- TMS_marrow@meta.data %>%
     as.data.frame() %>%
     select(nCount_RNA, nFeature_RNA, percent.ribo, S.Score, G2M.Score) %>%
@@ -178,23 +209,16 @@ for (v in names(cov_list)) {
 }
 
 # Compute corrected cell-level transcriptional dyscoordination with the following covariates
-correct_covariates <- c("nCount_RNA", "nFeature_RNA")
-fmla <- as.formula(paste("log_deviation ~", paste(correct_covariates, collapse = " + ")))
-
-cell_level_cov$log_deviation_corrected <- unsplit(
-  lapply(split(cell_level_cov, cell_level_cov$cell_type), function(g) {
-    if (nrow(g) < max(5, length(correct_covariates) + 2))
-      return(rep(NA_real_, nrow(g)))
-    residuals(lm(fmla, data = g))
-  }),
-  cell_level_cov$cell_type
-)  
+fit <- loess(log_deviation ~ nCount_RNA, data = cell_level_cov, span = 1)
+cell_level_cov$log_deviation_corrected <- cell_level_cov$log_deviation - predict(fit, newdata = cell_level_cov)
+na_idx <- is.na(cell_level_cov$log_deviation_corrected)
+cell_level_cov$log_deviation_corrected[na_idx] <- cell_level_cov$log_deviation[na_idx] - mean(cell_level_cov$log_deviation, na.rm = TRUE) 
 
 # Violin plot for corrected cell-level transcriptional dyscoordination
 p_cell_level_corrected <- cell_level_cov %>%
   filter(!is.na(log_deviation_corrected),
-         log_deviation_corrected >= quantile(log_deviation_corrected, 0.01, na.rm = TRUE),
-         log_deviation_corrected <= quantile(log_deviation_corrected, 0.99, na.rm = TRUE)) %>%
+         log_deviation_corrected >= quantile(log_deviation_corrected, 0.025, na.rm = TRUE),
+         log_deviation_corrected <= quantile(log_deviation_corrected, 0.975, na.rm = TRUE)) %>%
   ggplot(aes(x = Age, y = log_deviation_corrected, fill = Age)) +
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
@@ -207,6 +231,4 @@ p_cell_level_corrected <- cell_level_cov %>%
               step_increase = 0.1) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
 
-ggsave("TMS_marrow_cell_level_dyscoordination_corrected.png", p_cell_level_corrected, width = 8, height = 10)
-
-######################################################
+ggsave("TMS_marrow_cell_level_dyscoordination_corrected.png", p_cell_level_corrected, width = 9.5, height = 11)

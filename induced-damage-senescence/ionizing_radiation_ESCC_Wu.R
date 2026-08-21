@@ -5,7 +5,7 @@
 # https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE81812
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/Code/radiation/ESCC_cell_line")
+# setwd("path/to/working/directory")
 
 library(SAVER)
 library(pbapply)
@@ -126,7 +126,7 @@ p <- ggplot(all_temp_gene_level[!is.nan(all_temp_gene_level$Gene_level_deviation
             aes(x = Age, y = log(Gene_level_deviation), fill = Age)) + 
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
-  labs(x = "Radiation dosage", y = "Gene-level entropy (log-transformed)") + 
+  labs(x = "Radiation dosage", y = "Gene-level dyscoordination (log-transformed)") + 
   scale_fill_brewer(palette="Blues") +
   theme_minimal(base_size = 10) +
   theme(panel.grid = element_blank(), plot.margin = margin(2, 2, 2, 2),
@@ -194,7 +194,7 @@ p <- ggplot(all_temp_cell_level[all_temp_cell_level$Cell_level_deviation <= quan
             aes(x = Age, y = log(Cell_level_deviation), fill = Age)) + 
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
-  labs(x = "Radiation dosage", y = "Cell-level entropy (log-transformed)") + 
+  labs(x = "Radiation dosage", y = "Cell-level dyscoordination (log-transformed)") + 
   scale_fill_brewer(palette="Reds") +
   theme_minimal(base_size = 10) +
   theme(panel.grid = element_blank(), plot.margin = margin(2, 2, 2, 2),

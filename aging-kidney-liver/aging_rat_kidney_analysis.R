@@ -122,10 +122,28 @@ s_genes <- intersect(str_to_title(cc.genes.updated.2019$s.genes), rownames(obj))
 g2m_genes <- intersect(str_to_title(cc.genes.updated.2019$g2m.genes), rownames(obj))
 obj <- CellCycleScoring(obj, s.features = s_genes, g2m.features = g2m_genes, set.ident = FALSE)
 
+# Cell-count table — Celltype rows × age_wks columns, values = n_cells, with margins
+obj@meta.data$age_wks <- factor(paste0(obj$age_wks, "wk"), levels = age_levels)
+obj@meta.data$cell_type <- obj@meta.data$celltype_refined2
+cell_counts <- obj@meta.data %>%
+  as.data.frame() %>%
+  count(cell_type, age_wks) %>%
+  rename(Celltype = cell_type, Age = age_wks) %>%
+  mutate(Age = factor(Age, levels = age_levels)) %>%
+  tidyr::pivot_wider(names_from = Age, values_from = n, values_fill = 0) %>%
+  arrange(Celltype)
+cell_counts <- cell_counts %>% mutate(Total = rowSums(dplyr::select(., -Celltype)))
+cell_counts <- dplyr::bind_rows(
+  cell_counts,
+  cell_counts %>% summarise(Celltype = "Total", dplyr::across(-Celltype, sum)))
+write.csv(cell_counts, "aging_rat_kidney_cell_counts.csv", row.names = FALSE)
+cat("Cell counts (Celltype x Age) with margins:\n")
+print(cell_counts)
+
 kidney_metadata <- obj@meta.data %>%
   as.data.frame() %>%
-  select(nCount_RNA, nFeature_RNA, percent.mt, percent.ribo, S.Score, G2M.Score) %>%
-  mutate(Cell_barcode = rownames(obj@meta.data))
+  select(rat_id, nCount_RNA, nFeature_RNA, percent.mt, percent.ribo, S.Score, G2M.Score) %>%
+  mutate(Cell_barcode = rownames(obj@meta.data))  # rat_id = biological replicate (animal)
 
 rm(obj)
 
@@ -192,3 +210,20 @@ p_cell_level_corrected <- cell_level_cov %>%
 ggsave("aging_rat_kidney_cell_level_dyscoordination_corrected.png", p_cell_level_corrected, width = 8, height = 4)
 
 ######################################################
+# 3. Biological replicate analysis
+# Cell-level dyscoordination per biological replicate (animal), faceted by age
+# group, to confirm no single replicate drives the group-level trend.
+p_replicate <- cell_level_cov %>%
+  filter(!is.na(rat_id),
+         log_deviation >= quantile(log_deviation, 0.01, na.rm = TRUE),
+         log_deviation <= quantile(log_deviation, 0.99, na.rm = TRUE)) %>%
+  ggplot(aes(x = factor(rat_id), y = log_deviation, fill = Age)) +
+  geom_violin(trim = TRUE, scale = "width", color = NA) +
+  geom_boxplot(width = 0.2, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.3) +
+  scale_fill_brewer(palette = "Reds") +
+  facet_wrap(~ Age, ncol = 2, scales = "free_x") +
+  theme_minimal() +
+  labs(x = "Biological replicate (animal)", y = "Cell-level dyscoordination (log-transformed)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+ggsave("aging_rat_kidney_biological_replicate.png", p_replicate, width = 8, height = 6)

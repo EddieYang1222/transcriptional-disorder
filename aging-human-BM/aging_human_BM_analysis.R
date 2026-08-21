@@ -5,7 +5,7 @@
 # https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE120446
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/Human_BM")
+# setwd("path/to/working/directory")
 
 library(Seurat)
 library(dplyr)
@@ -106,94 +106,3 @@ p_cell_level_dyscoordination <- cell_level_dyscoordination_cleaned %>%
   scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
 
 ggsave("aging_human_BM_cell_level_dyscoordination.png", p_cell_level_dyscoordination, width = 8, height = 10)
-
-######################################################
-# 2. Technical covariate analysis
-cov_list <- c(nCount_RNA = "Sequencing depth",
-              nFeature_RNA = "Genes detected",
-              percent.mt = "Mitochondrial reads (%)",
-              percent.ribo = "Ribosomal reads (%)",
-              S.Score = "Cell cycle S score",
-              G2M.Score = "Cell cycle G2/M score")
-
-# Load in data
-bm <- readRDS(file.path(data_dir, "./human_BM_Oetjen_annotated.rds"))
-DefaultAssay(bm) <- "RNA"
-
-# Compute QC metrics
-bm[["percent.mt"]] <- PercentageFeatureSet(bm, pattern = "^MT-")
-bm[["percent.ribo"]] <- PercentageFeatureSet(bm, pattern = "^RP[SL]")
-s_genes <- intersect(cc.genes.updated.2019$s.genes, rownames(bm))
-g2m_genes <- intersect(cc.genes.updated.2019$g2m.genes, rownames(bm))
-bm <- CellCycleScoring(bm, s.features = s_genes, g2m.features = g2m_genes, set.ident = FALSE)
-
-bm_metadata <- bm@meta.data %>%
-  as.data.frame() %>%
-  select(nCount_RNA, nFeature_RNA, percent.mt, percent.ribo, S.Score, G2M.Score) %>%
-  mutate(Cell_barcode = rownames(bm@meta.data))
-
-rm(bm)
-
-cell_level_cov <- cell_level_dyscoordination_cleaned %>%
-  filter(Cell_level_deviation > 0) %>%
-  inner_join(bm_metadata, by = "Cell_barcode") %>%
-  filter(!is.na(Cell_level_deviation)) %>%
-  mutate(log_deviation = log(Cell_level_deviation),
-         Age = factor(Age, levels = age_levels))
-
-# Create scatter plots for covariates vs cell-level transcriptional dyscoordination
-plot_cov_scatter <- function(df, x_var, x_label) {
-  x_lo <- quantile(df[[x_var]], 0.01, na.rm = TRUE)
-  x_hi <- quantile(df[[x_var]], 0.99, na.rm = TRUE)
-  ggplot(df %>% filter(.data[[x_var]] >= x_lo & .data[[x_var]] <= x_hi),
-         aes_string(x = x_var, y = "log_deviation")) +
-    geom_point(aes(fill = Age), shape = 21, color = "black",
-               stroke = 0.2, alpha = 0.5, size = 1.2) +
-    geom_smooth(method = "lm", linetype = "dashed", color = "black", linewidth = 0.5) +
-    stat_cor(method = "spearman", size = 2.5, cor.coef.name = "rho") +
-    facet_wrap(~ Celltype, ncol = 3) +
-    scale_fill_brewer(palette = "Blues") +
-    theme_minimal() +
-    labs(x = x_label, y = "Cell-level dyscoordination (log-transformed)")
-}
-
-for (v in names(cov_list)) {
-  ggsave(paste0("aging_human_BM_covariate_scatter_", gsub("\\.", "_", v), ".png"),
-         plot_cov_scatter(cell_level_cov, v, cov_list[[v]]),
-         width = 8, height = 10)
-}
-
-# Compute corrected cell-level transcriptional dyscoordination with the following covariates
-correct_covariates <- c("nCount_RNA", "nFeature_RNA")
-fmla <- as.formula(paste("log_deviation ~", paste(correct_covariates, collapse = " + ")))
-
-# Regress within each cell type (age effect is preserved across groups)
-cell_level_cov$log_deviation_corrected <- unsplit(
-  lapply(split(cell_level_cov, cell_level_cov$Celltype), function(g) {
-    if (nrow(g) < max(5, length(correct_covariates) + 2))
-      return(rep(NA_real_, nrow(g)))
-    residuals(lm(fmla, data = g))
-  }),
-  cell_level_cov$Celltype
-)
-
-# Violin plot for corrected cell-level transcriptional dyscoordination
-p_cell_level_corrected <- cell_level_cov %>%
-  filter(!is.na(log_deviation_corrected),
-         log_deviation_corrected >= quantile(log_deviation_corrected, 0.01, na.rm = TRUE),
-         log_deviation_corrected <= quantile(log_deviation_corrected, 0.99, na.rm = TRUE)) %>%
-  ggplot(aes(x = Age, y = log_deviation_corrected, fill = Age)) +
-  geom_violin(trim = TRUE, scale = "width", color = NA) +
-  geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
-  scale_fill_brewer(palette = "Reds") +
-  facet_wrap(~ Celltype, ncol = 3) +
-  theme_minimal() +
-  labs(x = "Age", y = "Cell-level dyscoordination (log-transformed, corrected)") +
-  geom_signif(comparisons = signif_comparisons, map_signif_level = TRUE,
-              test = function(x, y) wilcox.test(x, y, alternative = "less"),
-              step_increase = 0.1) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
-
-ggsave("aging_human_BM_cell_level_dyscoordination_corrected.png", p_cell_level_corrected, width = 8, height = 10)
-
-######################################################

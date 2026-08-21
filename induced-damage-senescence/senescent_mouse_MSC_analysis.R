@@ -5,7 +5,7 @@
 # https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE169531
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/Mouse_MSC")
+# setwd("path/to/working/directory")
 
 library(Seurat)
 library(dplyr)
@@ -125,7 +125,7 @@ cov_list <- c(nCount_RNA = "Sequencing depth",
               G2M.Score = "Cell cycle G2/M score")
 
 # Load in processed data
-# data_dir <- "S:/Penn Dropbox/Eddie Yang/Aging/Data/Mouse_MSC"
+# data_dir <- "path/to/Mouse_MSC"
 sc_seu <- readRDS(file.path(data_dir, "mouse_MSC_SC_processed.rds"))
 fap_seu <- readRDS(file.path(data_dir, "mouse_MSC_FAP_processed.rds"))
 
@@ -145,6 +145,23 @@ compute_qc <- function(seu) {
 
 sc_seu <- compute_qc(sc_seu)
 fap_seu <- compute_qc(fap_seu)
+
+# Cell-count table — Celltype rows × Condition columns, values = n_cells, with margins
+cond_meta_col <- intersect(c("Condition", "condition", "orig.ident"),
+                           c(colnames(sc_seu@meta.data), colnames(fap_seu@meta.data)))[1]
+sc_counts  <- data.frame(Celltype = "SC",  Condition = sc_seu@meta.data[[cond_meta_col]])
+fap_counts <- data.frame(Celltype = "FAP", Condition = fap_seu@meta.data[[cond_meta_col]])
+cell_counts <- rbind(sc_counts, fap_counts) %>%
+  count(Celltype, Condition) %>%
+  tidyr::pivot_wider(names_from = Condition, values_from = n, values_fill = 0) %>%
+  arrange(Celltype)
+cell_counts <- cell_counts %>% mutate(Total = rowSums(dplyr::select(., -Celltype)))
+cell_counts <- dplyr::bind_rows(
+  cell_counts,
+  cell_counts %>% summarise(Celltype = "Total", dplyr::across(-Celltype, sum)))
+write.csv(cell_counts, "senescent_mouse_MSC_cell_counts.csv", row.names = FALSE)
+cat("Cell counts (Celltype x Condition) with margins:\n")
+print(cell_counts)
 
 extract_meta <- function(seu, celltype_name) {
   m <- seu@meta.data
@@ -234,3 +251,24 @@ ggsave("senescent_mouse_MSC_cell_level_dyscoordination_corrected.png",
        p_cell_level_corrected, width = 6, height = 4)
 
 ######################################################
+# 3. Biological replicate analysis
+# Sample/replicate (GSM library) is the barcode prefix (e.g. GSM5208913_...).
+cell_level_cov <- cell_level_cov %>%
+  mutate(Sample = sub("_.*$", "", Cell_barcode))
+
+# Cell-level dyscoordination per biological replicate (sample), faceted by
+# condition, to confirm no single replicate drives the group-level trend.
+p_replicate <- cell_level_cov %>%
+  filter(!is.na(Sample),
+         log_deviation >= quantile(log_deviation, 0.01, na.rm = TRUE),
+         log_deviation <= quantile(log_deviation, 0.99, na.rm = TRUE)) %>%
+  ggplot(aes(x = factor(Sample), y = log_deviation, fill = Condition)) +
+  geom_violin(trim = TRUE, scale = "width", color = NA) +
+  geom_boxplot(width = 0.2, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.3) +
+  scale_fill_brewer(palette = "Reds") +
+  facet_wrap(~ Condition, ncol = 3, scales = "free_x") +
+  theme_minimal() +
+  labs(x = "Biological replicate (sample)", y = "Cell-level dyscoordination (log-transformed)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+ggsave("senescent_mouse_MSC_biological_replicate.png", p_replicate, width = 8, height = 4)

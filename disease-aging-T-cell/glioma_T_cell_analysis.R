@@ -1,10 +1,10 @@
-# Transcriptional dyscoordination analysis for cancerous human T cells
+# Transcriptional dyscoordination analysis for glioma-infiltrating CD8 T cells (Glioma)
 
 # Online links
 # https://www.biorxiv.org/content/10.1101/2025.09.01.673503v1
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/T_cell_exhaustion")
+# setwd("path/to/working/directory")
 
 library(Seurat)
 library(dplyr)
@@ -22,8 +22,8 @@ source('Transcriptional_dyscoordination_functions.R')
 ######################################################
 # 1. Transcriptional dyscoordination analysis
 # Load in and clean results
-gene_level_dyscoordination <- read.csv("cancerous_human_T_cell_estimated_dispersion_SAVER.csv")
-cell_level_dyscoordination <- read.csv("cancerous_human_T_cell_cellular_dispersion_SAVER.csv")
+gene_level_dyscoordination <- read.csv("glioma_T_cell_estimated_dispersion_SAVER.csv")
+cell_level_dyscoordination <- read.csv("glioma_T_cell_cellular_dispersion_SAVER.csv")
 
 gene_level_dyscoordination$Gene_level_deviation <- remove_outliers(gene_level_dyscoordination$Gene_level_deviation)
 cell_level_dyscoordination$Cell_level_deviation <- remove_outliers(cell_level_dyscoordination$Cell_level_deviation)
@@ -87,7 +87,7 @@ p_gene_level_dyscoordination <- lfc_data %>%
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "red")
 
-ggsave("cancerous_human_T_cell_gene_level_dyscoordination.png",
+ggsave("glioma_T_cell_gene_level_dyscoordination.png",
        p_gene_level_dyscoordination, width = 8, height = 8)
 
 signif_comparisons <- lapply(seq_along(condition_levels[-length(condition_levels)]),
@@ -107,7 +107,7 @@ p_cell_level_dyscoordination <- cell_level_dyscoordination_cleaned %>%
               test = function(x, y) wilcox.test(x, y, alternative = "less"), step_increase = 0.1) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
 
-ggsave("cancerous_human_T_cell_cell_level_dyscoordination.png",
+ggsave("glioma_T_cell_cell_level_dyscoordination.png",
        p_cell_level_dyscoordination, width = 8, height = 8)
 
 ######################################################
@@ -120,7 +120,7 @@ cov_list <- c(nCount_RNA = "Sequencing depth",
               G2M.Score = "Cell cycle G2/M score")
 
 # Build Seurat object
-# data_dir <- 'S:/Penn Dropbox/Eddie Yang/Aging/Data/T_cell'
+data_dir <- 'path/to/T_cell_data'
 sparse_counts <- Matrix::readMM(file.path(data_dir, "CD830dim_sparse/matrix.mtx"))
 barcodes_all <- readLines(file.path(data_dir, "CD830dim_sparse/barcodes.tsv"))
 features_all <- read.delim(file.path(data_dir, "CD830dim_sparse/features.tsv"), header = FALSE)$V1
@@ -139,6 +139,26 @@ seu <- NormalizeData(seu)
 s_genes <- intersect(cc.genes.updated.2019$s.genes, rownames(seu))
 g2m_genes <- intersect(cc.genes.updated.2019$g2m.genes, rownames(seu))
 seu <- CellCycleScoring(seu, s.features = s_genes, g2m.features = g2m_genes, set.ident = FALSE)
+
+# Cell-count table — Celltype rows × Condition columns, values = n_cells, with margins
+seu@meta.data$cell_type <- cell_level_dyscoordination_cleaned$cell_type[
+  match(rownames(seu@meta.data), cell_level_dyscoordination_cleaned$Cell_barcode)]
+seu@meta.data$Condition <- cell_level_dyscoordination_cleaned$Condition[
+  match(rownames(seu@meta.data), cell_level_dyscoordination_cleaned$Cell_barcode)]
+cell_counts <- seu@meta.data %>%
+  as.data.frame() %>%
+  filter(!is.na(cell_type), !is.na(Condition)) %>%
+  count(cell_type, Condition) %>%
+  rename(Celltype = cell_type) %>%
+  tidyr::pivot_wider(names_from = Condition, values_from = n, values_fill = 0) %>%
+  arrange(Celltype)
+cell_counts <- cell_counts %>% mutate(Total = rowSums(dplyr::select(., -Celltype)))
+cell_counts <- dplyr::bind_rows(
+  cell_counts,
+  cell_counts %>% summarise(Celltype = "Total", dplyr::across(-Celltype, sum)))
+write.csv(cell_counts, "glioma_T_cell_cell_counts.csv", row.names = FALSE)
+cat("Cell counts (Celltype x Condition) with margins:\n")
+print(cell_counts)
 
 t_cell_metadata <- seu@meta.data %>%
   as.data.frame() %>%
@@ -170,7 +190,7 @@ plot_cov_scatter <- function(df, x_var, x_label) {
 }
 
 for (v in names(cov_list)) {
-  ggsave(paste0("cancerous_human_T_cell_covariate_scatter_", gsub("_RNA", "", v), ".png"),
+  ggsave(paste0("glioma_T_cell_covariate_scatter_", gsub("_RNA", "", v), ".png"),
          plot_cov_scatter(cell_level_cov, v, cov_list[[v]]),
          width = 8, height = 8)
 }
@@ -204,7 +224,24 @@ p_cell_level_corrected <- cell_level_cov %>%
               step_increase = 0.1) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1)))
 
-ggsave("cancerous_human_T_cell_cell_level_dyscoordination_corrected.png",
+ggsave("glioma_T_cell_cell_level_dyscoordination_corrected.png",
        p_cell_level_corrected, width = 8, height = 8)
 
 ######################################################
+# 3. Biological replicate analysis
+# Cell-level dyscoordination per biological replicate (patient), faceted by
+# condition, to confirm no single replicate drives the group-level trend.
+p_replicate <- cell_level_cov %>%
+  filter(!is.na(Patient),
+         log_deviation >= quantile(log_deviation, 0.01, na.rm = TRUE),
+         log_deviation <= quantile(log_deviation, 0.99, na.rm = TRUE)) %>%
+  ggplot(aes(x = factor(Patient), y = log_deviation, fill = Condition)) +
+  geom_violin(trim = TRUE, scale = "width", color = NA) +
+  geom_boxplot(width = 0.2, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.3) +
+  scale_fill_brewer(palette = "Reds") +
+  facet_wrap(~ Condition, ncol = 3, scales = "free_x") +
+  theme_minimal() +
+  labs(x = "Biological replicate (patient)", y = "Cell-level dyscoordination (log-transformed)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+ggsave("glioma_T_cell_biological_replicate.png", p_replicate, width = 10, height = 8)

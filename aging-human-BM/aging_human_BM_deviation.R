@@ -31,7 +31,8 @@ sample_info <- data.frame(
 data_dir <- 'path/to/GSE120446_raw_data'
 seurat_list <- list()
 for (i in 1:nrow(sample_info)) {
-  s <- sample_info$sample[i]; gsm <- sample_info$gsm[i]
+  s <- sample_info$sample[i]
+  gsm <- sample_info$gsm[i]
   mat <- ReadMtx(mtx = file.path(data_dir, paste0(gsm, '_matrix_', s, '.mtx.gz')),
                  cells = file.path(data_dir, paste0(gsm, '_barcodes_', s, '.tsv.gz')),
                  features = file.path(data_dir, paste0(gsm, '_genes_', s, '.tsv.gz')))

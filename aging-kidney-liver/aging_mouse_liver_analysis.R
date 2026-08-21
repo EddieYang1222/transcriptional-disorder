@@ -31,8 +31,8 @@ cell_level_dyscoordination_cleaned$Age <- factor(cell_level_dyscoordination_clea
 signif_comparisons <- list(c("young", "old"))
 
 p_gene_level_dyscoordination <- gene_level_dyscoordination_cleaned %>%
-  filter(Gene_level_deviation >= quantile(Gene_level_deviation, 0.01, na.rm = TRUE),
-         Gene_level_deviation <= quantile(Gene_level_deviation, 0.99, na.rm = TRUE)) %>%
+  filter(Gene_level_deviation >= quantile(Gene_level_deviation, 0.025, na.rm = TRUE),
+         Gene_level_deviation <= quantile(Gene_level_deviation, 0.975, na.rm = TRUE)) %>%
   ggplot(aes(x = Age, y = log(Gene_level_deviation), fill = Age)) +
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
@@ -46,8 +46,8 @@ p_gene_level_dyscoordination <- gene_level_dyscoordination_cleaned %>%
 ggsave("aging_mouse_liver_gene_level_dyscoordination.png", p_gene_level_dyscoordination, width = 5, height = 4)
 
 p_cell_level_dyscoordination <- cell_level_dyscoordination_cleaned %>%
-  filter(Cell_level_deviation >= quantile(Cell_level_deviation, 0.01, na.rm = TRUE),
-         Cell_level_deviation <= quantile(Cell_level_deviation, 0.99, na.rm = TRUE)) %>%
+  filter(Cell_level_deviation >= quantile(Cell_level_deviation, 0.025, na.rm = TRUE),
+         Cell_level_deviation <= quantile(Cell_level_deviation, 0.975, na.rm = TRUE)) %>%
   ggplot(aes(x = Age, y = log(Cell_level_deviation), fill = Age)) +
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
@@ -84,8 +84,9 @@ liver_hepatocyte <- CellCycleScoring(liver_hepatocyte, s.features = s_genes, g2m
 
 liver_hepatocyte_metadata <- liver_hepatocyte@meta.data %>%
   as.data.frame() %>%
-  select(nCount_RNA, nFeature_RNA, percent.mt, percent.ribo, S.Score, G2M.Score) %>%
-  mutate(Cell_barcode = rownames(liver_hepatocyte@meta.data))
+  mutate(Cell_barcode = rownames(liver_hepatocyte@meta.data),
+         Sample = as.character(orig.ident)) %>%  # biological replicate (mouse/library)
+  select(Cell_barcode, Sample, nCount_RNA, nFeature_RNA, percent.mt, percent.ribo, S.Score, G2M.Score)
 
 rm(liver_hepatocyte)
 
@@ -98,8 +99,8 @@ cell_level_cov <- cell_level_dyscoordination_cleaned %>%
 
 # Create one combined covariate scatter plot
 cov_long <- do.call(rbind, lapply(names(cov_list), function(v) {
-  x_lo <- quantile(cell_level_cov[[v]], 0.01, na.rm = TRUE)
-  x_hi <- quantile(cell_level_cov[[v]], 0.99, na.rm = TRUE)
+  x_lo <- quantile(cell_level_cov[[v]], 0.025, na.rm = TRUE)
+  x_hi <- quantile(cell_level_cov[[v]], 0.975, na.rm = TRUE)
   cell_level_cov %>%
     filter(.data[[v]] >= x_lo & .data[[v]] <= x_hi) %>%
     select(Cell_barcode, Age, log_deviation, all_of(v)) %>%
@@ -129,8 +130,8 @@ cell_level_cov$log_deviation_corrected <- residuals(lm(fmla, data = cell_level_c
 # Violin plot for corrected cell-level transcriptional dyscoordination
 p_cell_level_corrected <- cell_level_cov %>%
   filter(!is.na(log_deviation_corrected),
-         log_deviation_corrected >= quantile(log_deviation_corrected, 0.01, na.rm = TRUE),
-         log_deviation_corrected <= quantile(log_deviation_corrected, 0.99, na.rm = TRUE)) %>%
+         log_deviation_corrected >= quantile(log_deviation_corrected, 0.025, na.rm = TRUE),
+         log_deviation_corrected <= quantile(log_deviation_corrected, 0.975, na.rm = TRUE)) %>%
   ggplot(aes(x = Age, y = log_deviation_corrected, fill = Age)) +
   geom_violin(trim = TRUE, scale = "width", color = NA) +
   geom_boxplot(width = 0.15, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.4) +
@@ -145,3 +146,20 @@ p_cell_level_corrected <- cell_level_cov %>%
 ggsave("aging_mouse_liver_cell_level_dyscoordination_corrected.png", p_cell_level_corrected, width = 5, height = 4.5)
 
 ######################################################
+# 3. Biological replicate analysis
+# Cell-level dyscoordination per biological replicate (mouse), faceted by age
+# group, to confirm no single replicate drives the group-level trend.
+p_replicate <- cell_level_cov %>%
+  filter(!is.na(Sample),
+         log_deviation >= quantile(log_deviation, 0.025, na.rm = TRUE),
+         log_deviation <= quantile(log_deviation, 0.975, na.rm = TRUE)) %>%
+  ggplot(aes(x = factor(Sample), y = log_deviation, fill = Age)) +
+  geom_violin(trim = TRUE, scale = "width", color = NA) +
+  geom_boxplot(width = 0.2, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.3) +
+  scale_fill_brewer(palette = "Reds") +
+  facet_wrap(~ Age, ncol = 2, scales = "free_x") +
+  theme_minimal() +
+  labs(x = "Biological replicate (mouse)", y = "Cell-level dyscoordination (log-transformed)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+ggsave("aging_mouse_liver_biological_replicate.png", p_replicate, width = 8, height = 4.5)

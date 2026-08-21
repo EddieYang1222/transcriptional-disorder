@@ -15,7 +15,7 @@ source('Transcriptional_dyscoordination_functions.R')
 
 ######################################################
 # Load and prepare data
-data_dir <- 'S:/Penn Dropbox/Eddie Yang/Aging/Data/Human_Kidney'
+data_dir <- 'path/to/Human_Kidney'
 obj <- readRDS(file.path(data_dir, 'multi_rna.rds'))
 
 # Join clinical metadata

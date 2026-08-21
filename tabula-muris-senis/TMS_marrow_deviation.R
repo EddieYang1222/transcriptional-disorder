@@ -6,7 +6,7 @@
 # https://figshare.com/articles/dataset/Processed_files_to_use_with_scanpy_/8273102/2
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/TMS_marrow")
+# setwd("path/to/working/directory")
 
 library(Seurat)
 library(dplyr)

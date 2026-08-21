@@ -1,10 +1,11 @@
-# Transcriptional dyscoordination analysis for cancerous human T cells (CD8 exhaustion)
+# Transcriptional dyscoordination in glioma-infiltrating CD8 T cells (Glioma)
 
 # Online links
 # https://www.biorxiv.org/content/10.1101/2025.09.01.673503v1
+# CD8 T cell exhaustion atlas; count matrix + curated metadata from the authors
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/T_cell_exhaustion")
+# setwd("path/to/working/directory")
 
 library(Seurat)
 library(dplyr)
@@ -56,8 +57,8 @@ dataset.counts <- as.matrix(dataset.counts.sparse)
 size.factor <- colSums(dataset.counts) / mean(colSums(dataset.counts))
 save(dataset.counts, dataset.celltype, dataset.tumor.grade, dataset.treatment,
      dataset.condition_group, size.factor,
-     file = 'cancerous_human_T_cell_data.RData')
-load('cancerous_human_T_cell_data.RData')
+     file = 'glioma_T_cell_data.RData')
+load('glioma_T_cell_data.RData')
 
 # Run SAVER for manifold fitting
 # This step is typically computationally heavy and takes at least several hours for >= 10,000 cells
@@ -65,8 +66,8 @@ load('cancerous_human_T_cell_data.RData')
 dataset.saver <- saver(dataset.counts, ncores = 4)
 
 # Load and save pre-computed manifold
-# save(dataset.saver, file = "cancerous_human_T_cell_manifold.RData")
-# load("cancerous_human_T_cell_manifold.RData")
+# save(dataset.saver, file = "glioma_T_cell_manifold.RData")
+# load("glioma_T_cell_manifold.RData")
 
 rownames(dataset.saver$estimate) <- rownames(dataset.counts)
 colnames(dataset.saver$estimate) <- colnames(dataset.counts)
@@ -77,8 +78,8 @@ colnames(dataset.saver$mu.out) <- colnames(dataset.counts)
 # Find dispersion model with highest likelihood for each gene
 dataset.saver.mu <- dataset.saver$mu.out
 dataset.saver.var.models <- get_var_model(dataset.counts, dataset.saver.mu, size.factor)
-# save(dataset.saver.var.models, file = "cancerous_human_T_cell_variance_models_SAVER.RData")
-# load("cancerous_human_T_cell_variance_models_SAVER.RData")
+# save(dataset.saver.var.models, file = "glioma_T_cell_variance_models_SAVER.RData")
+# load("glioma_T_cell_variance_models_SAVER.RData")
 
 ######################################################
 # Compute gene-level and cell-level deviation
@@ -218,7 +219,7 @@ if (max(dataset.condition, na.rm = TRUE) > 1) {
   }
 }
 
-write.csv(all_temp_gene_level, "cancerous_human_T_cell_estimated_dispersion_SAVER.csv", row.names = FALSE)
-write.csv(all_temp_cell_level, "cancerous_human_T_cell_cellular_dispersion_SAVER.csv", row.names = FALSE)
+write.csv(all_temp_gene_level, "glioma_T_cell_estimated_dispersion_SAVER.csv", row.names = FALSE)
+write.csv(all_temp_cell_level, "glioma_T_cell_cellular_dispersion_SAVER.csv", row.names = FALSE)
 
 ######################################################

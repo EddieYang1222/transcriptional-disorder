@@ -1,7 +1,7 @@
 # Transcriptional dyscoordination analysis for aging human kidney (tubular cells only)
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/Human_kidney")
+# setwd("path/to/working/directory")
 
 library(Seurat)
 library(dplyr)
@@ -117,7 +117,7 @@ cov_list <- c(nCount_RNA = "Sequencing depth",
               G2M.Score = "Cell cycle G2/M score")
 
 # Load in data object and metadata
-# data_dir <- 'S:/Penn Dropbox/Eddie Yang/Aging/Data/Human_Kidney'
+# data_dir <- 'path/to/Human_Kidney'
 cell_types <- c('PST', 'PCT', 'PT_VCAM1', 'PT_PROM1', 'TAL', 'DCT1', 'DCT2_PC', 'ICA', 'ICB')
 
 obj <- readRDS(file.path(data_dir, 'multi_rna.rds'))
@@ -142,7 +142,24 @@ s_genes <- intersect(cc.genes.updated.2019$s.genes, rownames(obj))
 g2m_genes <- intersect(cc.genes.updated.2019$g2m.genes, rownames(obj))
 obj <- CellCycleScoring(obj, s.features = s_genes, g2m.features = g2m_genes, set.ident = FALSE)
 
+# Cell-count table — Celltype rows × age_bin columns, values = n_cells, with margins
+cell_counts <- obj@meta.data %>%
+  as.data.frame() %>%
+  count(celltype, age_bin) %>%
+  rename(Celltype = celltype, Age = age_bin) %>%
+  mutate(Age = factor(Age, levels = age_levels)) %>%
+  tidyr::pivot_wider(names_from = Age, values_from = n, values_fill = 0) %>%
+  arrange(Celltype)
+cell_counts <- cell_counts %>% mutate(Total = rowSums(dplyr::select(., -Celltype)))
+cell_counts <- dplyr::bind_rows(
+  cell_counts,
+  cell_counts %>% summarise(Celltype = "Total", dplyr::across(-Celltype, sum)))
+write.csv(cell_counts, "aging_human_kidney_cell_counts.csv", row.names = FALSE)
+cat("Cell counts (Celltype x Age) with margins:\n")
+print(cell_counts)
+
 kidney_metadata <- data.frame(Cell_barcode = colnames(obj),
+                              Sample = obj@meta.data$sample,  # biological replicate (donor/library)
                               nCount_RNA = obj$nCount_RNA,
                               nFeature_RNA = obj$nFeature_RNA,
                               percent.mt = obj@meta.data$percent.mt,
@@ -213,3 +230,20 @@ ggsave("aging_human_kidney_cell_level_dyscoordination_corrected.png",
        p_cell_level_corrected, width = 8, height = 8)
 
 ######################################################
+# 3. Biological replicate analysis
+# Cell-level dyscoordination per biological replicate (donor sample), faceted by
+# age group, to confirm no single replicate drives the group-level trend.
+p_replicate <- cell_level_cov %>%
+  filter(!is.na(Sample),
+         log_deviation >= quantile(log_deviation, 0.01, na.rm = TRUE),
+         log_deviation <= quantile(log_deviation, 0.99, na.rm = TRUE)) %>%
+  ggplot(aes(x = factor(Sample), y = log_deviation, fill = Age)) +
+  geom_violin(trim = TRUE, scale = "width", color = NA) +
+  geom_boxplot(width = 0.2, outlier.shape = NA, color = "black", fill = "white", linewidth = 0.3) +
+  scale_fill_brewer(palette = "Reds") +
+  facet_wrap(~ Age, ncol = 2, scales = "free_x") +
+  theme_minimal() +
+  labs(x = "Biological replicate (donor)", y = "Cell-level dyscoordination (log-transformed)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7))
+
+ggsave("aging_human_kidney_biological_replicate.png", p_replicate, width = 12, height = 8)

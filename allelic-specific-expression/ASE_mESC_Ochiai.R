@@ -5,7 +5,7 @@
 # https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE132589
 
 # Set up working directory
-# setwd("S:/Penn Dropbox/Eddie Yang/Aging/Scripts/Code/allele_specific_analysis/ochiai")
+# setwd("path/to/working/directory")
 
 ######################################################
 # Load in data
@@ -229,14 +229,14 @@ all_temp_gene_level$allelic_discordance <- allelic_discordance
 p <- ggplot(all_temp_gene_level, aes(x = log(Gene_level_deviation), y = log(allelic_discordance))) + 
   geom_point(shape = 21, size = 2, fill = "forestgreen", color = "black") +
   geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black", linewidth = 0.5) +
-  labs(x = "Log-transformed gene-level entropy", y = "Log-transformed allelic discordance") + 
-  ggtitle("Gene-level entropy vs allelic discordance") +
+  labs(x = "Log-transformed gene-level dyscoordination", y = "Log-transformed allelic discordance") +
+  ggtitle("Gene-level dyscoordination vs allelic discordance") +
   theme(panel.grid = element_blank(), panel.background = element_blank(),
         plot.background = element_blank(), axis.line = element_line(color = "black")) + 
   stat_cor() +
   ylim(-8, 2)
 
-ggsave("entropy_vs_discordance.pdf", plot = p)
+ggsave("dyscoordination_vs_discordance.pdf", plot = p)
 
 # Gene-level dispersion (under 3 models) vs. allelic discordance
 plot_df <- data.frame(CV = log(Aallele.disp.final.cv), FF = log(Aallele.disp.final.ff),
